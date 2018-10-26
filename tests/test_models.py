@@ -1,4 +1,4 @@
-#encoding: utf8
+# -*- coding: utf-8 -*-
 import datetime
 import json
 from unittest import TestCase
@@ -194,9 +194,6 @@ class QueryOutdatedQueriesTest(BaseTestCase):
 
 
 class QueryArchiveTest(BaseTestCase):
-    def setUp(self):
-        super(QueryArchiveTest, self).setUp()
-
     def test_archive_query_sets_flag(self):
         query = self.factory.create_query()
         db.session.flush()
@@ -457,6 +454,7 @@ def _set_up_dashboard_test(d):
     d.w1.dashboard.is_draft = False
     d.w2.dashboard.is_draft = False
     d.w4.dashboard.is_draft = False
+
 
 class TestDashboardAll(BaseTestCase):
     def setUp(self):
