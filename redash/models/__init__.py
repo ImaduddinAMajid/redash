@@ -182,9 +182,10 @@ class DataSource(BelongsToOrgMixin, db.Model):
         return dsg
 
     def remove_group(self, group):
-        db.session.query(DataSourceGroup).filter(
+        DataSourceGroup.query.filter(
             DataSourceGroup.group == group,
-            DataSourceGroup.data_source == self).delete()
+            DataSourceGroup.data_source == self
+        ).delete()
         db.session.commit()
 
     def update_group_permission(self, group, view_only):
@@ -206,8 +207,9 @@ class DataSource(BelongsToOrgMixin, db.Model):
     # XXX examine call sites to see if a regular SQLA collection would work better
     @property
     def groups(self):
-        groups = db.session.query(DataSourceGroup).filter(
-            DataSourceGroup.data_source == self)
+        groups = DataSourceGroup.query.filter(
+            DataSourceGroup.data_source == self
+        )
         return dict(map(lambda g: (g.group_id, g.view_only), groups))
 
 
@@ -257,32 +259,35 @@ class QueryResult(db.Model, BelongsToOrgMixin):
     @classmethod
     def unused(cls, days=7):
         age_threshold = datetime.datetime.now() - datetime.timedelta(days=days)
-
-        unused_results = (db.session.query(QueryResult.id).filter(
-            Query.id.is_(None), QueryResult.retrieved_at < age_threshold)
-            .outerjoin(Query))
-
-        return unused_results
+        return (
+            cls.query.filter(
+                Query.id.is_(None),
+                cls.retrieved_at < age_threshold
+            )
+            .outerjoin(Query)
+        ).options(load_only('id'))
 
     @classmethod
     def get_latest(cls, data_source, query, max_age=0):
         query_hash = utils.gen_query_hash(query)
 
         if max_age == -1:
-            q = db.session.query(QueryResult).filter(
+            query = cls.query.filter(
                 cls.query_hash == query_hash,
-                cls.data_source == data_source).order_by(
-                    QueryResult.retrieved_at.desc())
+                cls.data_source == data_source
+            )
         else:
-            q = db.session.query(QueryResult).filter(
-                QueryResult.query_hash == query_hash,
-                QueryResult.data_source == data_source,
-                db.func.timezone('utc', QueryResult.retrieved_at) +
-                datetime.timedelta(seconds=max_age) >=
-                db.func.timezone('utc', db.func.now())
-            ).order_by(QueryResult.retrieved_at.desc())
+            query = cls.query.filter(
+                cls.query_hash == query_hash,
+                cls.data_source == data_source,
+                (
+                    db.func.timezone('utc', cls.retrieved_at) +
+                    datetime.timedelta(seconds=max_age) >=
+                    db.func.timezone('utc', db.func.now())
+                )
+            )
 
-        return q.first()
+        return query.order_by(cls.retrieved_at.desc()).first()
 
     @classmethod
     def store_result(cls, org, data_source, query_hash, query, data, run_time, retrieved_at):
@@ -296,9 +301,10 @@ class QueryResult(db.Model, BelongsToOrgMixin):
         db.session.add(query_result)
         logging.info("Inserted query (%s) data; id=%s", query_hash, query_result.id)
         # TODO: Investigate how big an impact this select-before-update makes.
-        queries = db.session.query(Query).filter(
+        queries = Query.query.filter(
             Query.query_hash == query_hash,
-            Query.data_source == data_source)
+            Query.data_source == data_source
+        )
         for q in queries:
             q.latest_query_data = query_result
             # don't auto-update the updated_at timestamp
@@ -493,7 +499,7 @@ class Query(ChangeTrackingMixin, TimestampMixin, BelongsToOrgMixin, db.Model):
 
     @classmethod
     def favorites(cls, user, base_query=None):
-        if base_query == None:
+        if base_query is None:
             base_query = cls.all_queries(user.group_ids, user.id, drafts=True)
         return base_query.join((
             Favorite,
@@ -529,10 +535,14 @@ class Query(ChangeTrackingMixin, TimestampMixin, BelongsToOrgMixin, db.Model):
 
     @classmethod
     def outdated_queries(cls):
-        queries = (db.session.query(Query)
-                   .options(joinedload(Query.latest_query_data).load_only('retrieved_at'))
-                   .filter(Query.schedule.isnot(None))
-                   .order_by(Query.id))
+        queries = (
+            cls.query
+            .options(
+                joinedload(Query.latest_query_data).load_only('retrieved_at')
+            )
+            .filter(Query.schedule.isnot(None))
+            .order_by(Query.id)
+        )
 
         now = utils.utcnow()
         outdated_queries = {}
@@ -660,7 +670,6 @@ class Favorite(TimestampMixin, db.Model):
         UniqueConstraint("object_type", "object_id", "user_id", name="unique_favorite"),
     )
 
-
     @classmethod
     def is_favorite(cls, user, object):
         return cls.query.filter(cls.object == object, cls.user_id == user).count() > 0
@@ -676,7 +685,7 @@ class Favorite(TimestampMixin, db.Model):
 
 
 @generic_repr('id', 'name', 'query_id', 'user_id', 'state', 'last_triggered_at', 'rearm')
-class Alert(TimestampMixin, db.Model):
+class Alert(TimestampMixin, BelongsToOrgMixin, db.Model):
     UNKNOWN_STATE = 'unknown'
     OK_STATE = 'ok'
     TRIGGERED_STATE = 'triggered'
@@ -697,15 +706,23 @@ class Alert(TimestampMixin, db.Model):
 
     @classmethod
     def all(cls, group_ids):
-        return db.session.query(Alert)\
-            .options(joinedload(Alert.user), joinedload(Alert.query_rel))\
-            .join(Query)\
-            .join(DataSourceGroup, DataSourceGroup.data_source_id == Query.data_source_id)\
+        return (
+            cls.query
+            .options(
+                joinedload(Alert.user),
+                joinedload(Alert.query_rel),
+            )
+            .join(Query)
+            .join(
+                DataSourceGroup,
+                DataSourceGroup.data_source_id == Query.data_source_id
+            )
             .filter(DataSourceGroup.group_id.in_(group_ids))
+        )
 
     @classmethod
-    def get_by_id_and_org(cls, id, org):
-        return db.session.query(Alert).join(Query).filter(Alert.id == id, Query.org == org).one()
+    def get_by_id_and_org(cls, object_id, org):
+        return super(Alert, cls).get_by_id_and_org(object_id, org, Query)
 
     def evaluate(self):
         data = json_loads(self.query_rel.latest_query_data.data)
@@ -847,7 +864,7 @@ class Dashboard(ChangeTrackingMixin, TimestampMixin, BelongsToOrgMixin, db.Model
 
 @python_2_unicode_compatible
 @generic_repr('id', 'name', 'type', 'query_id')
-class Visualization(TimestampMixin, db.Model):
+class Visualization(TimestampMixin, BelongsToOrgMixin, db.Model):
     id = Column(db.Integer, primary_key=True)
     type = Column(db.String(100))
     query_id = Column(db.Integer, db.ForeignKey("queries.id"))
@@ -863,10 +880,8 @@ class Visualization(TimestampMixin, db.Model):
         return u"%s %s" % (self.id, self.type)
 
     @classmethod
-    def get_by_id_and_org(cls, visualization_id, org):
-        return db.session.query(Visualization).join(Query).filter(
-            cls.id == visualization_id,
-            Query.org == org).one()
+    def get_by_id_and_org(cls, object_id, org):
+        return super(Visualization, cls).get_by_id_and_org(object_id, org, Query)
 
     def copy(self):
         return {
@@ -879,7 +894,7 @@ class Visualization(TimestampMixin, db.Model):
 
 @python_2_unicode_compatible
 @generic_repr('id', 'visualization_id', 'dashboard_id')
-class Widget(TimestampMixin, db.Model):
+class Widget(TimestampMixin, BelongsToOrgMixin, db.Model):
     id = Column(db.Integer, primary_key=True)
     visualization_id = Column(db.Integer, db.ForeignKey('visualizations.id'), nullable=True)
     visualization = db.relationship(Visualization, backref='widgets')
@@ -894,8 +909,8 @@ class Widget(TimestampMixin, db.Model):
         return u"%s" % self.id
 
     @classmethod
-    def get_by_id_and_org(cls, widget_id, org):
-        return db.session.query(cls).join(Dashboard).filter(cls.id == widget_id, Dashboard.org == org).one()
+    def get_by_id_and_org(cls, object_id, org):
+        return super(Widget, cls).get_by_id_and_org(object_id, org, Dashboard)
 
 
 @python_2_unicode_compatible
@@ -961,7 +976,6 @@ class ApiKey(TimestampMixin, GFKBase, db.Model):
     __table_args__ = (
         db.Index('api_keys_object_type_object_id', 'object_type', 'object_id'),
     )
-
 
     @classmethod
     def get_by_api_key(cls, api_key):
@@ -1056,7 +1070,6 @@ class AlertSubscription(TimestampMixin, db.Model):
             'destination_id', 'alert_id', unique=True
         ),
     )
-
 
     def to_dict(self):
         d = {

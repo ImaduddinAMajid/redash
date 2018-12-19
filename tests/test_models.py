@@ -224,7 +224,7 @@ class QueryArchiveTest(BaseTestCase):
         db.session.commit()
         query.archive()
         db.session.flush()
-        self.assertEqual(db.session.query(models.Widget).get(widget.id), None)
+        self.assertEqual(models.Widget.query.get(widget.id), None)
 
     def test_removes_scheduling(self):
         query = self.factory.create_query(schedule="1")
@@ -239,19 +239,19 @@ class QueryArchiveTest(BaseTestCase):
         db.session.commit()
         query.archive()
         db.session.flush()
-        self.assertEqual(db.session.query(models.Alert).get(subscription.alert.id), None)
-        self.assertEqual(db.session.query(models.AlertSubscription).get(subscription.id), None)
+        self.assertEqual(models.Alert.query.get(subscription.alert.id), None)
+        self.assertEqual(models.AlertSubscription.query.get(subscription.id), None)
 
 
 class TestUnusedQueryResults(BaseTestCase):
     def test_returns_only_unused_query_results(self):
         two_weeks_ago = utcnow() - datetime.timedelta(days=14)
         qr = self.factory.create_query_result()
-        query = self.factory.create_query(latest_query_data=qr)
+        self.factory.create_query(latest_query_data=qr)
         db.session.flush()
         unused_qr = self.factory.create_query_result(retrieved_at=two_weeks_ago)
-        self.assertIn((unused_qr.id,), models.QueryResult.unused())
-        self.assertNotIn((qr.id,), list(models.QueryResult.unused()))
+        self.assertIn(unused_qr, list(models.QueryResult.unused()))
+        self.assertNotIn(qr, list(models.QueryResult.unused()))
 
     def test_returns_only_over_a_week_old_results(self):
         two_weeks_ago = utcnow() - datetime.timedelta(days=14)
@@ -259,8 +259,8 @@ class TestUnusedQueryResults(BaseTestCase):
         db.session.flush()
         new_unused_qr = self.factory.create_query_result()
 
-        self.assertIn((unused_qr.id,), models.QueryResult.unused())
-        self.assertNotIn((new_unused_qr.id,), models.QueryResult.unused())
+        self.assertIn(unused_qr, list(models.QueryResult.unused()))
+        self.assertNotIn(new_unused_qr, list(models.QueryResult.unused()))
 
 
 class TestQueryAll(BaseTestCase):
