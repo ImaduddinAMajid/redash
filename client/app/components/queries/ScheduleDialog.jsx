@@ -69,10 +69,6 @@ class ScheduleDialog extends React.Component {
     };
   }
 
-  get counts() {
-    return range(1, INTERVAL_OPTIONS_MAP[this.state.interval]);
-  }
-
   get intervals() {
     const ret = this.props.refreshOptions
       .map((seconds) => {
@@ -95,6 +91,8 @@ class ScheduleDialog extends React.Component {
       newSchedule: Object.assign(this.state.newSchedule, newProps),
     });
   }
+
+  getCounts = interval => range(1, INTERVAL_OPTIONS_MAP[interval])
 
   setTime = (h, m) => {
     this.newSchedule = {
@@ -141,8 +139,14 @@ class ScheduleDialog extends React.Component {
       newSchedule.day_of_week = WEEKDAYS_FULL[0];
     }
 
+    // reset count if out of new interval count range
+    let count = this.state.count;
+    if (this.getCounts(newInterval).indexOf(Number(count)) === -1) {
+      count = '1';
+    }
+
     newSchedule.interval = newInterval
-      ? intervalToSeconds(Number(this.state.count), newInterval)
+      ? intervalToSeconds(Number(count), newInterval)
       : null;
 
     const [hour, minute] = newSchedule.time ?
@@ -151,7 +155,7 @@ class ScheduleDialog extends React.Component {
 
     this.setState({
       interval: newInterval,
-      count: newInterval !== IntervalEnum.NEVER ? this.state.count : '1',
+      count,
       hour,
       minute,
       dayOfWeek: newSchedule.day_of_week
@@ -222,7 +226,7 @@ class ScheduleDialog extends React.Component {
           <div>
             {interval !== IntervalEnum.NEVER ? (
               <Select value={count} onChange={this.setCount} {...selectProps}>
-                {this.counts.map(cnt => (
+                {this.getCounts(this.state.interval).map(cnt => (
                   <Option value={String(cnt)} key={cnt}>{cnt}</Option>
                 ))}
               </Select>
