@@ -5,7 +5,7 @@ import Modal from 'antd/lib/modal';
 import DatePicker from 'antd/lib/date-picker';
 import { range, padStart } from 'lodash';
 import moment from 'moment';
-import { secondsToInterval, intervalToSeconds, IntervalEnum } from '@/filters';
+import { secondsToInterval, intervalToSeconds, IntervalEnum, localizeTime } from '@/filters';
 
 import './ScheduleDialog.css';
 
@@ -23,16 +23,6 @@ const HOUR_OPTIONS = range(0, 24).map(x => padStart(x, 2, '0')); // [00, 01, 02,
 const MINUTE_OPTIONS = range(0, 60, 5).map(x => padStart(x, 2, '0')); // [00, 05, 10, ..]
 const DATE_FORMAT = 'YYYY-MM-DD';
 const HOUR_FORMAT = 'HH:mm';
-
-function localizeTime(time) {
-  const [hrs, mins] = time.split(':');
-  return moment
-    .utc()
-    .hour(hrs)
-    .minute(mins)
-    .local()
-    .format(HOUR_FORMAT);
-}
 
 class ScheduleDialog extends React.Component {
   static propTypes = {

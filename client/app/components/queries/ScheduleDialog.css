@@ -11,3 +11,11 @@
   padding-right: 5px;
   float: left;
 }
+
+.schedule-phrase {
+  display: inline-block;
+}
+
+a.schedule-phrase {
+  cursor: pointer;
+}
